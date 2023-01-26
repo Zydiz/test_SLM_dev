@@ -49,6 +49,7 @@ void writeFile(fs::FS &fs, const char * path, const char * message){
   } else {
     Serial.printf("Truncated file: %s\n", path);
   }
+
   if( file.write( (const uint8_t*)message, strlen(message)+1 ) ) {
     Serial.println("- data written");
   } else {
@@ -77,6 +78,7 @@ void appendFile(fs::FS &fs, const char * path, const char * message){
   file.close();
   Serial.printf("Appending done: %s\n", path);
 }
+
 
 void readFile(fs::FS &fs, const char * path){
   delay(100);
@@ -114,23 +116,48 @@ void readFile(fs::FS &fs, const char * path){
   Serial.printf("Read done: %s", path);
 }
 
-bool copy_file(const char* srcfile, const char* destfile) {
-  FILE *src, *dest;
-  String tempfile = String(destfile) + ".new"; 
-  src = fopen(srcfile, "r");
-  if (!src) return false;
-  dest = fopen(tempfile.c_str(), "w");
-  if (!dest) return false;
-  char bufc;
-  bufc = fgetc(src);
-  while (!feof(src)) {
-    fputc(bufc, dest);
-    bufc = fgetc(src);
+
+void copyFile(fs::FS &fsPsram, const char * pathPsram, fs::FS &fsSd, const char * pathSd) {
+  delay(100);
+
+  File filePsram = PSRamFS.open(pathPsram, "r+");
+
+  if(!filePsram || filePsram.isDirectory()){
+    Serial.printf("Failed to open file for reading : %s \n", pathPsram);
+    return;
   }
-  fclose(src);
-  fclose(dest);
-  if (rename(tempfile.c_str(), destfile)) return false;
-  return true;
+
+  if( !filePsram.available() ) {
+    Serial.printf("CANNOT read from file: %s \n", pathPsram);
+  } else {
+    Serial.printf("Will read from file: %s \n", pathPsram);
+
+    delay(100);
+    Serial.println();
+
+    File fileSd = SD.open(pathSd, "a"); // TODO take a look
+
+    if(!fileSd || fileSd.isDirectory()){
+      Serial.printf("Failed to open file for reading : %s \n", pathSd);
+      return;
+    } else if (!fileSd.available()) {
+      Serial.printf("CANNOT read from file: %s \n", pathSd);
+    } else { // TODO UNFINISHED
+      int32_t lastPosition = -1;
+      while(filePsram.available()) {
+        size_t position = filePsram.position();
+        char a = filePsram.read();
+        Serial.write( a );
+        if( lastPosition == position ) { // uh-oh
+          Serial.println("Halting");
+          while(1);
+          break;
+        } else {
+          lastPosition = position;
+        }
+      }
+    }
+  }
 }
 
 
@@ -209,7 +236,7 @@ void setup(){
   mainLoopTask();
 
   Serial.print("!!now the reading part:\r\n\r\n");
-  readFile(PSRamFS, FileName.c_str());
+  copyFile();
 }
 
 void loop(){
