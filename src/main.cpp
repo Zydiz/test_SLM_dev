@@ -41,8 +41,6 @@ uint8_t initSDcard(){
 void writeFile(fs::FS &fs, const char * path, const char * message){
   delay(100);
 
-  Serial.printf("Will truncate %s using %s mode\n", path, FILE_WRITE );
-
   File file = fs.open(path, FILE_WRITE);
 
   if(!file){
@@ -66,8 +64,6 @@ void writeFile(fs::FS &fs, const char * path, const char * message){
 void appendFile(fs::FS &fs, const char * path, const char * message){
   delay(100);
 
-  Serial.printf("Will append %s using %s mode\n", path, FILE_APPEND );
-
   File file = fs.open(path, FILE_APPEND);
   if(!file){
     Serial.println("- failed to open file for appending");
@@ -80,6 +76,61 @@ void appendFile(fs::FS &fs, const char * path, const char * message){
   }
   file.close();
   Serial.printf("Appending done: %s\n", path);
+}
+
+void readFile(fs::FS &fs, const char * path){
+  delay(100);
+
+  File file = fs.open(path);
+  if(!file || file.isDirectory()){
+    Serial.printf("Failed to open file for reading : %s", path);
+    return;
+  }
+
+  if( !file.available() ) {
+    Serial.printf("CANNOT read from file: %s", path);
+  } else {
+    Serial.printf("Will read from file: %s", path);
+
+    delay(100);
+    Serial.println();
+
+    int32_t lastPosition = -1;
+    while( file.available() ) {
+      size_t position = file.position();
+      char a = file.read();
+      Serial.write( a );
+      if( lastPosition == position ) { // uh-oh
+        Serial.println("Halting");
+        while(1);
+        break;
+      } else {
+        lastPosition = position;
+      }
+    }
+  }
+  Serial.println("\n");
+  file.close();
+  Serial.printf("Read done: %s", path);
+}
+
+bool copy_file(const char* srcfile, const char* destfile) {
+  FILE *src, *dest;
+  String tempfile = String(destfile) + ".new"; 
+  src = fopen(srcfile, "r");
+  if (!src) return false;
+  dest = fopen(tempfile.c_str(), "w");
+  if (!dest) return false;
+  char bufc;
+  bufc = fgetc(src);
+  while (!feof(src)) {
+    fputc(bufc, dest);
+    bufc = fgetc(src);
+  }
+  fclose(src);
+  fclose(dest);
+  if (rename(tempfile.c_str(), destfile)) return false;
+  return true;
 }
 
 
@@ -96,7 +147,7 @@ String FileName = String("/Frekans_") + random(30) + ".txt";
 
 void mainLoopTask(){
   String dataMessage;
-  size_t msg = random(5);
+  size_t msg = random(500);
   dataMessage = msg + "||" + String(msg) + "||" + String(msg) + "||" + String(msg)
                     + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
                     + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
@@ -134,8 +185,8 @@ void setup(){
   Serial.begin(115200);
   // Serial.setDebugOutput(true);
   Serial.println();
-  // sd card vers
-  // if(!initSDcard()) return;
+
+  if(!initSDcard()) return; // sd card vers
 
   if(!PSRamFS.begin()){
     Serial.println("PSRamFS Mount Failed");
@@ -156,6 +207,9 @@ void setup(){
   file.close();
 
   mainLoopTask();
+
+  Serial.print("!!now the reading part:\r\n\r\n");
+  readFile(PSRamFS, FileName.c_str());
 }
 
 void loop(){
