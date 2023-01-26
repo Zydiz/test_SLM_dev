@@ -236,7 +236,7 @@ void setup(){
   mainLoopTask();
 
   Serial.print("!!now the reading part:\r\n\r\n");
-  copyFile();
+  copyFile(); // TODO
 }
 
 void loop(){
