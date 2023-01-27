@@ -116,37 +116,37 @@ void readFile(fs::FS &fs, const char * path){
 }
 
 
-void copyFile(fs::FS &fsPsram,fs::FS &fsSd, const char * path) {
+void copyFile(fs::FS &fs1,fs::FS &fs2, const char * path) {
   delay(100);
 
-  File filePsram = PSRamFS.open(path, "r+");
+  File file1 = fs1.open(path, "r+");
 
-  if(!filePsram || filePsram.isDirectory()){
-    Serial.printf("FAILED to open psram file: %s \n", path);
+  if(!file1 || file1.isDirectory()){
+    Serial.printf("FAILED to open file 1: %s \n", path);
     return;
   }
 
-  if( !filePsram.available() ) {
-    Serial.printf("CANNOT read from psram file: %s \n", path);
+  if( !file1.available() ) {
+    Serial.printf("CANNOT read from file 1: %s \n", path);
   } else {
-    Serial.printf("Will read from psram file: %s \n", path);
+    Serial.printf("Will read from file 1: %s \n", path);
 
     delay(100);
     Serial.println();
 
-    File fileSd = SD.open(path, "a"); // TODO take a look
+    File file2 = fs2.open(path, "a");
 
-    if(!fileSd || fileSd.isDirectory()){
-      Serial.printf("FAILED to open SD file for appending: %s \n", path);
+    if(!file2 || file2.isDirectory()){
+      Serial.printf("FAILED to open file 2 for appending: %s \n", path);
       return;
-    } else if (!fileSd.available()) {
-      Serial.printf("CANNOT open SD file: %s \n", path);
+    } else if (!file2.available()) {
+      Serial.printf("CANNOT open file 2: %s \n", path);
     } else {
       int32_t lastPosition = -1;
-      while(filePsram.available()) {
-        size_t position = filePsram.position();
-        char a = filePsram.read();
-        if(!fileSd.write(a)){
+      while(file1.available()) {
+        size_t position = file1.position();
+        char a = file1.read();
+        if(!file2.write(a)){
           return;
         }
         if( lastPosition == position ) { // uh-oh
@@ -158,8 +158,8 @@ void copyFile(fs::FS &fsPsram,fs::FS &fsSd, const char * path) {
         }
       }
       Serial.println("Copying finished");
-      filePsram.close();
-      fileSd.close();
+      file1.close();
+      file2.close();
     }
   }
 }
