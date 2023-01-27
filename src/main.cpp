@@ -76,7 +76,6 @@ void appendFile(fs::FS &fs, const char * path, const char * message){
     Serial.println("- append failed\n");
   }
   file.close();
-  Serial.printf("Appending done: %s\n", path);
 }
 
 
@@ -117,37 +116,39 @@ void readFile(fs::FS &fs, const char * path){
 }
 
 
-void copyFile(fs::FS &fsPsram, const char * pathPsram, fs::FS &fsSd, const char * pathSd) {
+void copyFile(fs::FS &fsPsram,fs::FS &fsSd, const char * path) {
   delay(100);
 
-  File filePsram = PSRamFS.open(pathPsram, "r+");
+  File filePsram = PSRamFS.open(path, "r+");
 
   if(!filePsram || filePsram.isDirectory()){
-    Serial.printf("Failed to open file for reading : %s \n", pathPsram);
+    Serial.printf("FAILED to open psram file: %s \n", path);
     return;
   }
 
   if( !filePsram.available() ) {
-    Serial.printf("CANNOT read from file: %s \n", pathPsram);
+    Serial.printf("CANNOT read from psram file: %s \n", path);
   } else {
-    Serial.printf("Will read from file: %s \n", pathPsram);
+    Serial.printf("Will read from psram file: %s \n", path);
 
     delay(100);
     Serial.println();
 
-    File fileSd = SD.open(pathSd, "a"); // TODO take a look
+    File fileSd = SD.open(path, "a"); // TODO take a look
 
     if(!fileSd || fileSd.isDirectory()){
-      Serial.printf("Failed to open file for reading : %s \n", pathSd);
+      Serial.printf("FAILED to open SD file for appending: %s \n", path);
       return;
     } else if (!fileSd.available()) {
-      Serial.printf("CANNOT read from file: %s \n", pathSd);
-    } else { // TODO UNFINISHED
+      Serial.printf("CANNOT open SD file: %s \n", path);
+    } else {
       int32_t lastPosition = -1;
       while(filePsram.available()) {
         size_t position = filePsram.position();
         char a = filePsram.read();
-        Serial.write( a );
+        if(!fileSd.write(a)){
+          return;
+        }
         if( lastPosition == position ) { // uh-oh
           Serial.println("Halting");
           while(1);
@@ -156,8 +157,16 @@ void copyFile(fs::FS &fsPsram, const char * pathPsram, fs::FS &fsSd, const char 
           lastPosition = position;
         }
       }
+      Serial.println("Copying finished");
+      filePsram.close();
+      fileSd.close();
     }
   }
+}
+
+
+void logMemory() {
+  log_d("Used PSRAM: %d", ESP.getPsramSize() - ESP.getFreePsram());
 }
 
 
@@ -172,30 +181,28 @@ void copyFile(fs::FS &fsPsram, const char * pathPsram, fs::FS &fsSd, const char 
 
 String FileName = String("/Frekans_") + random(30) + ".txt";
 
-void mainLoopTask(){
+void mainLoopTask(fs::FS &fs){
   String dataMessage;
-  size_t msg = random(500);
-  dataMessage = msg + "||" + String(msg) + "||" + String(msg) + "||" + String(msg)
-                    + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
-                    + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
-                    + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
-                    + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
-                    + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
-                    + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
-                    + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
-                    + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
-                    + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
-                    + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
-                    + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
-                    + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
-                    + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
-                    + "||" + String(msg) + "||" + String(msg) +  "||" + String(msg)
-                    + "||" + String(msg) + "\r\n";
   for(int i = 0; i<60; i++){
+    dataMessage = String(random(100, 500)) + "||" + random(100, 500) + "||" + random(100, 500) + "||" + random(100, 500)
+                                           + "||" + random(100, 500) + "||" + random(100, 500) + "||" + random(100, 500)
+                                           + "||" + random(100, 500) + "||" + random(100, 500) + "||" + random(100, 500)
+                                           + "||" + random(100, 500) + "||" + random(100, 500) + "||" + random(100, 500)
+                                           + "||" + random(100, 500) + "||" + random(100, 500) + "||" + random(100, 500)
+                                           + "||" + random(100, 500) + "||" + random(100, 500) + "||" + random(100, 500)
+                                           + "||" + random(100, 500) + "||" + random(100, 500) + "||" + random(100, 500)
+                                           + "||" + random(100, 500) + "||" + random(100, 500) + "||" + random(100, 500)
+                                           + "||" + random(100, 500) + "||" + random(100, 500) + "||" + random(100, 500)
+                                           + "||" + random(100, 500) + "||" + random(100, 500) + "||" + random(100, 500)
+                                           + "||" + random(100, 500) + "||" + random(100, 500) + "||" + random(100, 500)
+                                           + "||" + random(100, 500) + "||" + random(100, 500) + "||" + random(100, 500)
+                                           + "||" + random(100, 500) + "||" + random(100, 500) + "||" + random(100, 500)
+                                           + "||" + random(100, 500) + "||" + random(100, 500) + "||" + random(100, 500)
+                                           + "||" + random(100, 500) + "||" + random(100, 500) + "||" + random(100, 500)
+                                           + "||" + random(100, 500) + "\r\n";
     appendFile(PSRamFS, FileName.c_str(), dataMessage.c_str()); // PSRamFS instead of SD
+    delay(100);
   }
-  Serial.println(dataMessage);
-
 }
 
 
@@ -225,7 +232,7 @@ void setup(){
   if(!file){
     Serial.println("File doesn't exist");
     Serial.println("Creating file...");
-    String header = "DateAndTime,LA,LC,LZ,LAmax,LAmin,LCmax,LCmin,LZmax,LZmin,LApeak,LCpeak,LZpeak,runnA,runnC,runnZ,20,25,32,40,50,63,80,100,125,160,200,250,316,400,500,630,800,1000,1250,1584,2000,2500,3162,4000,5000,6300,8000,10000,12500,15840,20000 \r\n";
+    String header = "DateAndTime,LA,LC,LZ,LAmax,LAmin,LCmax,LCmin,LZmax,LZmin,LApeak,LCpeak,LZpeak,runnA,runnC,runnZ,20,25,32,40,50,63,80,100,125,160,200,250,316,400,100, 500,630,800,1000,1250,1584,2000,2100, 500,3162,4000,100, 5000,6300,8000,10000,12100, 500,15840,20000 \r\n";
     Serial.println(header);
     writeFile(PSRamFS, FileName.c_str(), header.c_str()); // PSRamFS instead of SD
   } else{
@@ -233,10 +240,17 @@ void setup(){
   }
   file.close();
 
-  mainLoopTask();
+  mainLoopTask(PSRamFS);
+  logMemory();
 
-  Serial.print("!!now the reading part:\r\n\r\n");
-  copyFile(); // TODO
+  Serial.print("\r\n\r\n------------------------\r\n\r\n-------main file-------\r\n\r\n------------------------\r\n\r\n");
+  readFile(PSRamFS, FileName.c_str());
+
+  Serial.print("\r\n\r\n-----------------------\r\n\r\n--------copying--------\r\n\r\n-----------------------\r\n\r\n");
+  copyFile(PSRamFS, SD, FileName.c_str());
+
+  Serial.print("\r\n\r\n---------------------------\r\n\r\n--------copied file--------\r\n\r\n---------------------------\r\n\r\n");
+  readFile(SD, FileName.c_str());
 }
 
 void loop(){
