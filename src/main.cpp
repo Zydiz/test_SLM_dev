@@ -17,6 +17,116 @@ const char* httpPath   = "/post_test";
 const char* deviceId   = "123456";
 
 
+uint8_t initSDcard(){
+  if(!SD.begin(5)){
+    Serial.println("Card Mount Failed");
+    return 0;
+  }
+  uint8_t cardType = SD.cardType();
+
+  if(cardType == CARD_NONE){
+    Serial.println("No SD card attached");
+    return 0;
+  }
+
+  Serial.print("SD Card Type: ");
+  if(cardType == CARD_MMC){
+    Serial.println("MMC");
+  } else if(cardType == CARD_SD){
+    Serial.println("SDSC");
+  } else if(cardType == CARD_SDHC){
+    Serial.println("SDHC");
+  } else {
+    Serial.println("UNKNOWN");
+  }
+
+  uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+  Serial.printf("SD Card Size: %lluMB\n", cardSize);
+
+
+  Serial.printf("Total space: %lluMB\n", SD.totalBytes() / (1024 * 1024));
+  Serial.printf("Used space: %lluMB\n", SD.usedBytes() / (1024 * 1024));
+  return 1;
+}
+
+
+void writeFile(fs::FS &fs, const char * path, const char * message){
+  delay(100);
+
+  File file = fs.open(path, FILE_WRITE);
+
+  if(!file){
+    Serial.printf("Failed to open file %s for writing\n", path);
+    return;
+  } else {
+    Serial.printf("Truncated file: %s\n", path);
+  }
+
+  if( file.write( (const uint8_t*)message, strlen(message)+1 ) ) {
+    Serial.println("- data written");
+  } else {
+    Serial.println("- write failed\n");
+  }
+  file.close();
+  Serial.printf("Write done: %s\n", path);
+
+}
+
+
+void appendFile(fs::FS &fs, const char * path, const char * message){
+  delay(100);
+
+  File file = fs.open(path, FILE_APPEND);
+  if(!file){
+    Serial.println("- failed to open file for appending");
+    return;
+  }
+  if( file.write( (const uint8_t*)message, strlen(message)+1 ) ){
+    Serial.println("- message appended");
+  } else {
+    Serial.println("- append failed\n");
+  }
+  file.close();
+}
+
+
+void readFile(fs::FS &fs, const char * path){
+  delay(100);
+
+  File file = fs.open(path);
+  if(!file || file.isDirectory()){
+    Serial.printf("Failed to open file for reading : %s", path);
+    return;
+  }
+
+  if( !file.available() ) {
+    Serial.printf("CANNOT read from file: %s", path);
+  } else {
+    Serial.printf("Will read from file: %s", path);
+
+    delay(100);
+    Serial.println();
+
+    int32_t lastPosition = -1;
+    while( file.available() ) {
+      size_t position = file.position();
+      char a = file.read();
+      Serial.write( a );
+      if( lastPosition == position ) { // uh-oh
+        Serial.println("Halting");
+        while(1);
+        break;
+      } else {
+        lastPosition = position;
+      }
+    }
+  }
+  Serial.println("\n");
+  file.close();
+  Serial.printf("Read done: %s", path);
+}
+
+
 void readPost(fs::FS &fs, const char * path) {
   Serial.printf("Reading file: %s\n", path);
 
@@ -27,6 +137,7 @@ void readPost(fs::FS &fs, const char * path) {
   }
 
   size_t fLen = file.size();
+  Serial.println(fLen);
   char * fileBuffer = new char[BUFSIZE + 1];
 
   WiFiClient client;
@@ -101,117 +212,6 @@ void readPost(fs::FS &fs, const char * path) {
 }
 
 
-uint8_t initSDcard(){
-  if(!SD.begin(5)){
-    Serial.println("Card Mount Failed");
-    return 0;
-  }
-  uint8_t cardType = SD.cardType();
-
-  if(cardType == CARD_NONE){
-    Serial.println("No SD card attached");
-    return 0;
-  }
-
-  Serial.print("SD Card Type: ");
-  if(cardType == CARD_MMC){
-    Serial.println("MMC");
-  } else if(cardType == CARD_SD){
-    Serial.println("SDSC");
-  } else if(cardType == CARD_SDHC){
-    Serial.println("SDHC");
-  } else {
-    Serial.println("UNKNOWN");
-  }
-
-  uint64_t cardSize = SD.cardSize() / (1024 * 1024);
-  Serial.printf("SD Card Size: %lluMB\n", cardSize);
-
-
-  Serial.printf("Total space: %lluMB\n", SD.totalBytes() / (1024 * 1024));
-  Serial.printf("Used space: %lluMB\n", SD.usedBytes() / (1024 * 1024));
-  return 1;
-}
-
-
-void writeFile(fs::FS &fs, const char * path, const char * message){
-  delay(100);
-
-  File file = fs.open(path, FILE_WRITE);
-
-  if(!file){
-    Serial.printf("Failed to open file %s for writing\n", path);
-    return;
-  } else {
-    Serial.printf("Truncated file: %s\n", path);
-  }
-
-  if( file.write( (const uint8_t*)message, strlen(message)+1 ) ) {
-    Serial.println("- data written");
-  } else {
-    Serial.println("- write failed\n");
-  }
-  file.close();
-  Serial.printf("Write done: %s\n", path);
-
-}
-
-
-// append data to SD card
-void appendFile(fs::FS &fs, const char * path, const char * message){
-  delay(100);
-
-  File file = fs.open(path, FILE_APPEND);
-  if(!file){
-    Serial.println("- failed to open file for appending");
-    return;
-  }
-  if( file.write( (const uint8_t*)message, strlen(message)+1 ) ){
-    Serial.println("- message appended");
-  } else {
-    Serial.println("- append failed\n");
-  }
-  file.close();
-}
-
-
-void readFile(fs::FS &fs, const char * path){
-  delay(100);
-
-  File file = fs.open(path);
-  if(!file || file.isDirectory()){
-    Serial.printf("Failed to open file for reading : %s", path);
-    return;
-  }
-
-  if( !file.available() ) {
-    Serial.printf("CANNOT read from file: %s", path);
-  } else {
-    Serial.printf("Will read from file: %s", path);
-
-    delay(100);
-    Serial.println();
-
-    int32_t lastPosition = -1;
-    while( file.available() ) {
-      size_t position = file.position();
-      char a = file.read();
-      Serial.write( a );
-      if( lastPosition == position ) { // uh-oh
-        Serial.println("Halting");
-        while(1);
-        break;
-      } else {
-        lastPosition = position;
-      }
-    }
-  }
-  Serial.println("\n");
-  file.close();
-  Serial.printf("Read done: %s", path);
-}
-
-
 void copyFile(fs::FS &fs1,fs::FS &fs2, const char * path) {
   delay(100);
 
@@ -257,6 +257,18 @@ void copyFile(fs::FS &fs1,fs::FS &fs2, const char * path) {
       file1.close();
       file2.close();
     }
+  }
+}
+
+
+void deleteFile(fs::FS &fs, const char * path)
+{
+  delay(100);
+  Serial.printf("Deleting file: %s\r\n", path);
+  if(fs.remove(path)){
+    Serial.println("- file deleted");
+  } else {
+    Serial.println("- delete failed");
   }
 }
 
@@ -310,6 +322,7 @@ void mainLoopTask(fs::FS &fs){
 //
 //
 
+const char* oldFile = "/Frekans_15.txt";
 
 void setup(){
   Serial.begin(115200);
@@ -340,21 +353,37 @@ void setup(){
   }
   file.close();
 
-  mainLoopTask(PSRamFS);
+  // mainLoopTask(PSRamFS);
   logMemory();
 
-  Serial.print("\r\n\r\n------------------------\r\n\r\n-------main file-------\r\n\r\n------------------------\r\n\r\n");
-  readFile(PSRamFS, FileName.c_str());
+  // Serial.print("\r\n\r\n------------------------\r\n\r\n-------main file-------\r\n\r\n------------------------\r\n\r\n");
+  // readFile(PSRamFS, FileName.c_str());
 
-  Serial.print("\r\n\r\n-----------------------\r\n\r\n--------copying--------\r\n\r\n-----------------------\r\n\r\n");
-  copyFile(PSRamFS, SD, FileName.c_str());
+  // Serial.print("\r\n\r\n-----------------------\r\n\r\n--------copying--------\r\n\r\n-----------------------\r\n\r\n");
+  // copyFile(PSRamFS, SD, FileName.c_str());
 
   Serial.print("\r\n\r\n---------------------------\r\n\r\n--------copied file--------\r\n\r\n---------------------------\r\n\r\n");
   readFile(SD, FileName.c_str());
 
-  Serial.print("\r\n\r\n---------------------------\r\n\r\n--------copied file--------\r\n\r\n---------------------------\r\n\r\n");
-  readPost(SD, FileName.c_str());
+  Serial.print("\r\n\r\n---------------------------\r\n\r\n--------post file--------\r\n\r\n---------------------------\r\n\r\n");
+  readPost(SD, oldFile);
 }
+
+// void setup(){
+//   Serial.begin(115200);
+//   // Serial.setDebugOutput(true);
+//   Serial.println();
+
+//   if(!initSDcard()) return; // sd card vers
+
+//   if(!PSRamFS.begin()){
+//     Serial.println("PSRamFS Mount Failed");
+//     return;
+//   }
+
+//   PSRamFS.format();
+//   Serial.println("done and dusted");
+// }
 
 void loop(){
   // ahmet
