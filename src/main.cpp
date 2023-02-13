@@ -126,9 +126,21 @@ void readPost(fs::FS &fs, const char *path) {
     return;
   }
 
-  size_t fLen = file.size();
+  size_t fLen = file.available();
   Serial.println(fLen);
   char *fileBuffer = new char[BUFSIZE + 1];
+  uint8_t lines;
+
+  // TODO IMPLEMENT LINE COUNTER
+  while (file.available()) {
+    char c = file.read();
+    if (c == '\n') {
+      lines++;
+    }
+  }
+  file.seek(0);
+
+  uint16_t contLen =  fLen + 31 + 15 + strlen(file.name()) - lines;
 
   WiFiClient client;
   Serial.println("\nStarting connection to server...");
@@ -144,12 +156,14 @@ void readPost(fs::FS &fs, const char *path) {
     // Make a HTTP request
     client.println(String("Host: ") + httpHost);
     client.println("Connection: close");
-    client.println("Content-Type: text/plain");
+    client.println("Content-Type: application/json");
     client.print("Content-Length: ");
-    client.println(fLen + 29);
+    client.println(contLen); // TODO line counter + new param
     client.println();
 
-    client.print(String("{\"DeviceId\":\"") + deviceId + "\",\"Data\":\"");
+    client.print(String("{\"DeviceId\":\"") + deviceId + "\",");
+    client.print(String("\"FileName\":\"") + file.name() + "\",");
+    client.print("\"Data\":\"");
 
     uint8_t skip = 0;
     size_t written = 0;
@@ -175,9 +189,6 @@ void readPost(fs::FS &fs, const char *path) {
       }
       written = client.write(fileBuffer, toRead);
       Serial.println(written);
-      // client.flush();
-      // Serial.println(toRead);
-      // Serial.println(fileBuffer);
       delay(100);
     }
     client.print("\"}");
@@ -367,6 +378,11 @@ void setup() {
     Serial.println("PSRamFS Mount Failed");
     return;
   }
+  delay(500);
+
+  Serial.printf("Connecting to %s ", ssid);
+  WiFi.begin(ssid, password);
+  WiFi.waitForConnectResult();
 
   Serial.println(FileName);
   File file = SD.open(FileName, "r+");
@@ -374,16 +390,24 @@ void setup() {
   if (!file) {
     Serial.println("File doesn't exist");
     Serial.println("Creating file...");
-    String header = "DateAndTime,LA,LC,LZ,LAmax,LAmin,LCmax,LCmin,LZmax,LZmin,LApeak,LCpeak,LZpeak,runnA,runnC,runnZ,20,25,32,40,50,63,80,100,125,160,200,250,316,400,100, 500,630,800,1000,1250,1584,2000,2100, 500,3162,4000,100, 5000,6300,8000,10000,12100, 500,15840,20000 \r\n";
+    String header = "DateAndTime,LA,LC,LZ,LAmax,LAmin,LCmax,LCmin,LZmax,LZmin,LApeak,LCpeak,LZpeak,runnA,runnC,runnZ,20,25,32,40,50,63,80,100,125,160,200,250,316,400,500,630,800,1000,1250,1584,2000,2500,3162,4000,5000,6300,8000,10000,12500,15840,20000 \r\n";
     Serial.println(header);
     writeFile(SD, FileName.c_str(), header.c_str());
-    // writeFile(PSRamFS, oldFile, header.c_str());
   } else {
     Serial.println("File already exists");
   }
   file.close();
 
-  mainLoopTask(SD, FileName.c_str());
+  // mainLoopTask(SD, FileName.c_str());
+
+  Serial.print("\r\n\r\n------------------------\r\n\r\n-------main file-------\r\n\r\n------------------------\r\n\r\n");
+  // readFile(SD, FileName.c_str());
+  readFile(SD, "/test.txt");
+
+  Serial.print("\r\n\r\n---------------------------\r\n\r\n--------post file--------\r\n\r\n---------------------------\r\n\r\n"); 
+  // readPost(SD, FileName.c_str());
+  readPost(SD, "/test.txt");
+
 }
 
 void loop() {
