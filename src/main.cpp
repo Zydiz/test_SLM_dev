@@ -7,8 +7,8 @@
 
 #define BUFSIZE 1024
 
-const char *ssid = "FREKANS";
-const char *password = "Frekans1000hz";
+const char *ssid = "SSID";
+const char *password = "PASSWORD";
 
 const char *httpHost = "c12edaf5-27c4-441a-9bbf-8587e5c8471c.mock.pstmn.io";
 const char *httpPath = "/post_test";
@@ -117,21 +117,24 @@ void readFile(fs::FS &fs, const char *path) {
   Serial.printf("Read done: %s", path);
 }
 
-void readPost(fs::FS &fs, const char *path) {
-  Serial.printf("Reading file: %s\n", path);
+bool readPost(fs::FS &fs, const char* path) {
+  bool bFlag;
+  log_i("Reading file: %s\n", path);
 
   File file = fs.open(path);
   if (!file) {
-    Serial.println("Failed to open file for reading");
-    return;
+    log_e("Failed to open file for reading");
+    return false;
   }
 
   size_t fLen = file.available();
-  Serial.println(fLen);
-  char *fileBuffer = new char[BUFSIZE + 1];
-  uint8_t lines;
+  log_d("%d", fLen);
+  if (!fLen) return false; // HACK TESTING
 
-  // TODO IMPLEMENT LINE COUNTER
+  char* fileBuffer = new char[BUFSIZE + 1];
+  size_t lines = 0;
+  char response[64];
+
   while (file.available()) {
     char c = file.read();
     if (c == '\n') {
@@ -140,92 +143,122 @@ void readPost(fs::FS &fs, const char *path) {
   }
   file.seek(0);
 
-  uint16_t contLen =  fLen + 31 + 15 + strlen(file.name()) - lines;
+  size_t contLen =  fLen + 31 + 15 + strlen(file.name()) - lines + 1 ; // TODO some gibberish at the end?
 
   WiFiClient client;
-  Serial.println("\nStarting connection to server...");
-  if (!client.connect(httpHost, 80)) {
-    Serial.println("Connection failed!");
-    return;
-  } else {
-    Serial.println("Connected to server!");
-    client.println();
-    client.println();
-    client.println(String("POST ") + httpPath + " HTTP/1.1");
 
-    // Make a HTTP request
-    client.println(String("Host: ") + httpHost);
-    client.println("Connection: close");
-    client.println("Content-Type: application/json");
-    client.print("Content-Length: ");
-    client.println(contLen); // TODO line counter + new param
-    client.println();
-
-    client.print(String("{\"DeviceId\":\"") + deviceId + "\",");
-    client.print(String("\"FileName\":\"") + file.name() + "\",");
-    client.print("\"Data\":\"");
-
-    uint8_t skip = 0;
-    size_t written = 0;
-    while (file.available()) {
-      size_t toRead = file.available();
-      if (toRead > BUFSIZE) {
-        toRead = BUFSIZE;
-      }
-      for (uint16_t i = 0; i < toRead; i++) {
-        if (skip == 0) {
-          fileBuffer[i] = file.read();
-          if (fileBuffer[i] == '\r') {
-            if (file.peek() == '\n') {
-              skip = 1;
-              fileBuffer[i] = '*';
-            }
-          }
-        } else {
-          skip = 0;
-          i -= 1;
-          file.read();
-        }
-      }
-      written = client.write(fileBuffer, toRead);
-      Serial.println(written);
-      delay(100);
+  log_i("\nStarting connection to server...");
+  int8_t retry_c = 0;
+  while (!client.connect(httpHost, 80)) {
+    if (++retry_c > 10) {
+      log_e("Connection failed!");
+      return false;
     }
-    client.print("\"}");
-    client.print("\r\n");
+  }
+  // if (!client.connect(httpHost, 80)) {
+  //   log_e("Connection failed!");
+  //   return false;
+  // } else {
+  log_i("Connected to server!");
+  client.println();
+  client.println();
+  client.println(String("POST ") + httpPath + " HTTP/1.1");
+  // client.printf("POST %s HTTP/1.1\r\n", httpPath);
 
-    while (client.connected()) {
-      String line = client.readStringUntil('\n');
-      if (line == "\r") {
-        Serial.println("headers received");
+  // Make a HTTP request
+  client.println(String("Host: ") + httpHost);
+  // client.printf("Host: %s\r\n", httpHost);
+  client.println("Connection: close");
+  client.println("Content-Type: application/json");
+  // client.printf("Content-Length: %d", contLen);
+  client.println(String("Content-Length: ") + contLen);
+  client.println();
+
+  client.print(String("{\"DeviceId\":\"") + deviceId + "\",");
+  client.print(String("\"FileName\":\"") + file.name() + "\",");
+  // client.printf("{\"DeviceId\":\"%s\",", deviceId);
+  // client.printf("\"FileName\":\"%s\",", file.name());
+  client.print("\"Data\":\"");
+
+  // TODO check for 0 size writes
+  uint8_t skip = 0;
+  size_t written = 0;
+  while (file.available()) {
+    size_t toRead = file.available();
+    if (toRead > BUFSIZE) {
+      toRead = BUFSIZE;
+    }
+    for (uint16_t i = 0; i < toRead; i++) {
+      if (skip == 0) {
+        fileBuffer[i] = file.read();
+        if (fileBuffer[i] == '\r') {
+          if (file.peek() == '\n') {
+            skip = 1;
+            fileBuffer[i] = '*';
+          }
+        }
+      } else {
+        skip = 0;
+        i -= 1;
+        file.read();
+      }
+    }
+    written = client.write((const uint8_t*)fileBuffer, toRead);
+    log_d("%d", written);
+    delay(100);
+  }
+  client.print("\"}");
+  client.print("\r\n");
+
+  for (uint8_t i = 0; (!client.available()) && (i < 1000); i++) {
+    delay(1);
+  }
+
+  uint8_t i = 0;
+  while (client.available()) {
+    char c = client.read();
+    response[i] = c;
+    if (c == '\r') {
+      response[i] = '\0';
+      i = 0;
+      Serial.println(response);
+      if (strcmp(response, "HTTP/1.1 200 OK")) {
+        if (strcmp(response, "HTTP/1.1 409 Conflict")) {
+          Serial.println("Response status is NOT \"200 OK\" OR \"409 Conflict\"");
+          bFlag = false;
+          break;
+        } else {
+        // TODO check for new config
+          bFlag = true;
+          break;
+        }
+      } else {
+        // TODO check for new config
+        bFlag = true;
         break;
       }
     }
-    while (client.available()) {
-      char c = client.read();
-      Serial.write(c);
-    }
-    Serial.println();
+    i++;
   }
+  Serial.println();
+
   client.stop();
   delete[] fileBuffer;
-  return;
+  file.close();
+  return bFlag;
 }
-
-void copyFile(fs::FS &fs1, fs::FS &fs2, const char *path) {
-  delay(100);
-
+void copyFile(fs::FS& fs1, fs::FS& fs2, const char* path) {
+  // delay(100);
   File file1 = fs1.open(path, "r+");
 
   if (!file1 || file1.isDirectory()) {
-    Serial.printf("FAILED to open file 1: %s \n", path);
+    log_e("FAILED to open file 1: %s \n", path);
     return;
-  }
-
-  if (!file1.available()) {
-    Serial.printf("CANNOT read from file 1: %s \n", path);
+  } else if (!file1.available()) {
+    log_e("CANNOT read from file 1: %s \n", path);
+    return;
   } else {
-    Serial.printf("Will read from file 1: %s \n", path);
+    // log_i("Will read from file 1: %s \n", path);
 
     delay(100);
     Serial.println();
@@ -233,30 +266,22 @@ void copyFile(fs::FS &fs1, fs::FS &fs2, const char *path) {
     File file2 = fs2.open(path, "a");
 
     if (!file2 || file2.isDirectory()) {
-      Serial.printf("FAILED to open file 2 for appending: %s \n", path);
+      log_e("FAILED to open file 2 for appending: %s \n", path);
       return;
-    } else if (!file2.available()) {
-      Serial.printf("CANNOT open file 2: %s \n", path);
     } else {
-      int32_t lastPosition = -1;
+      const size_t bufferSize = 512;
+      uint8_t buffer[bufferSize]; // create a buffer array of size 512
       while (file1.available()) {
-        size_t position = file1.position();
-        char a = file1.read();
-        if (!file2.write(a)) {
+        size_t n = file1.read(buffer, bufferSize); // read up to bytesToRead bytes from file1 into buffer
+        if (!file2.write(buffer, n)) { // write the bytes from buffer to file2
           return;
         }
-        if (lastPosition == position) {  // uh-oh
-          Serial.println("Halting");
-          while (1);
-          break;
-        } else {
-          lastPosition = position;
-        }
       }
-      Serial.println("Copying finished");
-      file1.close();
-      file2.close();
+      log_i("Copying finished");
     }
+
+    file1.close();
+    file2.close();
   }
 }
 
@@ -317,55 +342,6 @@ void mainLoopTask(fs::FS &fs, const char *path) {
 //
 //
 
-/*void setup() {
-  Serial.begin(115200);
-  // Serial.setDebugOutput(true);
-  Serial.println();
-
-  if (!initSDcard()) return;  // sd card vers
-
-  if (!PSRamFS.begin()) {
-    Serial.println("PSRamFS Mount Failed");
-    return;
-  }
-
-  Serial.printf("Connecting to %s ", ssid);
-  WiFi.begin(ssid, password);
-  WiFi.waitForConnectResult();
-
-  Serial.println(FileName);
-  File file = PSRamFS.open(FileName, "r+");
-  // File file = PSRamFS.open(oldFile, "r+");
-  if (!file) {
-    Serial.println("File doesn't exist");
-    Serial.println("Creating file...");
-    String header = "DateAndTime,LA,LC,LZ,LAmax,LAmin,LCmax,LCmin,LZmax,LZmin,LApeak,LCpeak,LZpeak,runnA,runnC,runnZ,20,25,32,40,50,63,80,100,125,160,200,250,316,400,100, 500,630,800,1000,1250,1584,2000,2100, 500,3162,4000,100, 5000,6300,8000,10000,12100, 500,15840,20000 \r\n";
-    Serial.println(header);
-    writeFile(PSRamFS, FileName.c_str(), header.c_str());
-    // writeFile(PSRamFS, oldFile, header.c_str());
-  } else {
-    Serial.println("File already exists");
-  }
-  file.close();
-
-  // mainLoopTask(PSRamFS);
-  logMemory();
-
-  Serial.print("\r\n\r\n------------------------\r\n\r\n-------main file-------\r\n\r\n------------------------\r\n\r\n");
-  // readFile(PSRamFS, FileName.c_str());
-  readFile(PSRamFS, oldFile);
-
-  Serial.print("\r\n\r\n-----------------------\r\n\r\n--------copying--------\r\n\r\n-----------------------\r\n\r\n");
-  // copyFile(PSRamFS, SD, FileName.c_str());
-  copyFile(PSRamFS, SD, oldFile);
-
-  Serial.print("\r\n\r\n---------------------------\r\n\r\n--------copied file--------\r\n\r\n---------------------------\r\n\r\n");
-  // readFile(SD, FileName.c_str());
-  readFile(SD, oldFile);
-
-  // Serial.print("\r\n\r\n---------------------------\r\n\r\n--------post file--------\r\n\r\n---------------------------\r\n\r\n"); 
-  // readPost(SD, oldFile);
-} */
 
 void setup() {
   Serial.begin(115200);
